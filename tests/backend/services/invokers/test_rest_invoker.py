@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 from fastapi import HTTPException
+from opentelemetry.sdk.trace import TracerProvider
 
 from rhesis.backend.app.services.invokers.rest_invoker import RestEndpointInvoker
 
@@ -271,6 +272,29 @@ class TestRestEndpointInvoker:
 
         assert headers["X-Organization-ID"] == "org-123"
         assert headers["X-User-ID"] == "user-456"
+
+    def test_prepare_headers_with_trace_context_propagation(self, mock_db, sample_endpoint_rest):
+        """Test that W3C traceparent header is injected when an active span exists."""
+        invoker = RestEndpointInvoker()
+
+        # Set up a real OTel tracer so there is an active span context
+        provider = TracerProvider()
+        tracer = provider.get_tracer("test")
+
+        with tracer.start_as_current_span("test-span"):
+            headers = invoker._prepare_headers(mock_db, sample_endpoint_rest, {})
+
+        assert "traceparent" in headers
+
+        provider.shutdown()
+
+    def test_prepare_headers_without_active_span(self, mock_db, sample_endpoint_rest):
+        """Test that traceparent is absent when no active span exists."""
+        invoker = RestEndpointInvoker()
+
+        headers = invoker._prepare_headers(mock_db, sample_endpoint_rest, {})
+
+        assert "traceparent" not in headers
 
     @pytest.mark.asyncio
     async def test_invoke_preserves_unmapped_error_fields(

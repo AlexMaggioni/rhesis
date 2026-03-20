@@ -2,6 +2,8 @@
 
 from typing import Any, Dict
 
+from opentelemetry.propagate import inject
+
 
 class HeaderManager:
     """Handles header sanitization and injection for endpoint requests."""
@@ -48,7 +50,8 @@ class HeaderManager:
     @staticmethod
     def inject_context_headers(headers: Dict[str, str], input_data: Dict[str, Any] = None) -> None:
         """
-        Inject context headers (organization_id, user_id) into headers dict.
+        Inject context headers (organization_id, user_id) and W3C trace context
+        into headers dict.
 
         These come from backend context, NOT user input (SECURITY CRITICAL).
         Only adds headers if they don't already exist.
@@ -62,3 +65,8 @@ class HeaderManager:
                 headers["X-Organization-ID"] = str(input_data["organization_id"])
             if "user_id" in input_data and "X-User-ID" not in headers:
                 headers["X-User-ID"] = str(input_data["user_id"])
+
+        # Propagate W3C trace context (traceparent/tracestate) so server-side
+        # spans link to the current trace. This is a no-op when there is no
+        # active OpenTelemetry span context.
+        inject(headers)
